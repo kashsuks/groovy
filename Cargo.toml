@@ -1,0 +1,17 @@
+[package]
+name = "groove"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "groove"
+path = "src/main.rs"
+
+[depedencies]
+ratatui = "0.26"
+crossterm = "0.27"
+color-eyre = "0.6"
+
+[profile.release]
+opt-level = 3
+lto = true
