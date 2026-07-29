@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod tui;
 
 use std::time::Duration;
