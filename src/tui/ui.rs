@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::app::{App, Screen};
 
-pub fn draw(frame: &mut Frame, app: &app) {
+pub fn draw(frame: &mut Frame, app: &App) {
     match app.screen {
         Screen::Home => draw_home(frame, app),
         Screen::Playlist => draw_playlist(frame, app),
@@ -25,7 +25,7 @@ fn draw_home(frame: &mut Frame, _app: &App) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .contrainsts([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(area);
 
     let logo = Paragraph::new(vec![
@@ -35,13 +35,13 @@ fn draw_home(frame: &mut Frame, _app: &App) {
                 .fg(Color::Magenta)
                 .add_modifier(Modifier::BOLD),
         )),
-        Line::from("")
+        Line::from(""),
         Line::from("your playlists, from disk"),
     ])
     .alignment(Alignment::Center)
     .block(Block::default());
 
-    frame.render_widget(placeholder, chunks[1]);
+    frame.render_widget(logo, chunks[1]);
 }
 
 fn draw_playlist(frame: &mut Frame, _app: &App) {

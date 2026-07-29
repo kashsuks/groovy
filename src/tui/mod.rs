@@ -11,7 +11,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
 
 pub fn init() -> color_eyre::Result<Tui> {
-    enable_raw_mode();
+    enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen)?;
     let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     Ok(terminal)
