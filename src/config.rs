@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaylistEntry {
-    pub name: string,
+    pub name: String,
     pub path: PathBuf,
 }
 

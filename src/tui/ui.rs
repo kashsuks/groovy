@@ -41,7 +41,15 @@ fn draw_home(frame: &mut Frame, _app: &App) {
     .alignment(Alignment::Center)
     .block(Block::default());
 
-    frame.render_widget(logo, chunks[1]);
+    frame.render_widget(logo, chunks[0]);
+
+    let placeholder = Paragraph::new(
+        "No playlists yet — this is where saved playlists will be listed. (Phase 2)",
+    )
+    .alignment(Alignment::Center)
+    .block(Block::default().borders(Borders::ALL).title(" Playlists "));
+
+    frame.render_widget(placeholder, chunks[1]);
 }
 
 fn draw_playlist(frame: &mut Frame, _app: &App) {

@@ -109,7 +109,7 @@ impl BrowserState {
     /// Navigates the browser to the typed path iif its a valid path
     pub fn popup_confirm(&mut self) {
         let Some(popup) = &self.popup else { return };
-        let types = PathBuf::from(popup.input.trim());
+        let typed = PathBuf::from(popup.input.trim());
 
         if typed.is_dir() {
             self.current_dir = typed;
