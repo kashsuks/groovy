@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
 
@@ -20,7 +20,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-fn draw_home(frame: &mut Frame, _app: &App) {
+fn draw_home(frame: &mut Frame, app: &App) {
     let area = frame.size();
 
     let chunks = Layout::default()
@@ -43,16 +43,40 @@ fn draw_home(frame: &mut Frame, _app: &App) {
 
     frame.render_widget(logo, chunks[0]);
 
-    let placeholder = Paragraph::new(
-        "No playlists yet — this is where saved playlists will be listed. (Phase 2)",
-    )
-    .alignment(Alignment::Center)
-    .block(Block::default().borders(Borders::ALL).title(" Playlists "));
-
-    frame.render_widget(placeholder, chunks[1]);
+    draw_playlist_list(frame, app, chunks[1]);
 }
 
-fn draw_playlist(frame: &mut Frame, _app: &App) {
+fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
+    if app.config.playlists.is_empty() {
+        let placeholder = Paragraph::new("No playlists yet - press 'n' to create one")
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL).title(" Playlists "));
+        frame.render_widget(placeholder, area);
+        return;
+    }
+
+    let items: Vec<ListItem> = app
+        .config
+        .playlists
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            let style = if i == app.home_selected {
+                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(format!("{} ({})", entry.name, entry.path.display())).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(" Playlists "));
+
+    frame.render_widget(list, area);
+}
+
+fn draw_playlist(frame: &mut Frame, app: &App) {
     let area = frame.size();
 
     let chunks = Layout::default()
