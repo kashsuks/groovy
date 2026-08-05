@@ -2,11 +2,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
     Frame,
 };
 
-use crate::app::{HomeMode, browser::BrowserState};
+use crate::app::{HomeMode, Screen::Playlist, browser::BrowserState};
 use crate::app::{App, Screen};
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -147,20 +147,89 @@ fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(list, area);
 }
 
-fn draw_playlist(frame: &mut Frame, _app: &App) {
+fn draw_playlist(frame: &mut Frame, app: &App) {
     let area = frame.size();
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(3)])
         .split(area);
+    
+    let Some(playlist) = &app.current_playlist else {
+        let empty = Paragraph::new("No playlist open")
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL).title(" Playlist "));
+        frame.render_widget(empty, chunks[0]);
+        draw_bottom_bar(frame, chunks[1]);
+        return;
+    };
 
-    let body = Paragraph::new("Playlist screen placeholder")
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).title(" Playlist "));
-    frame.render_widget(body, chunks[0]);
+    let body_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Length(1), Constraint::Min(1)])
+        .split(chunks[0]);
+
+    let title = Paragraph::new(Line::from(Span::styled(
+        playlist.name.as_str(),
+        Style::default().add_modifier(Modifier::BOLD),
+    )))
+    .alignment(Alignment::Left)
+    .block(Block::default().borders(Borders::BOTTOM));
+    frame.render_widget(title, body_chunks[0]);
+
+    let play_button = Paragraph::new(Span::styled(
+        " Play ",
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    ));
+    frame.render_widget(play_button, body_chunks[1]);
+
+    draw_track_table(frame, playlist, body_chunks[2]);
 
     draw_bottom_bar(frame, chunks[1]);
+}
+
+fn draw_track_table(frame: &mut Frame, _playlist: &crate::app::ActivePlaylist, area: Rect) {
+    let header = Row::new(vec!["#", "Title", "Duration"])
+        .style(Style::default().add_modifier(Modifier::BOLD))
+        .bottom_margin(1);
+
+    let rows: Vec<Row> = playlist
+        .tracks
+        .iter()
+        .map(|track| {
+            Row::new(vec![
+                track.index.to_string(),
+                track.title.clone(),
+                format_duration(track.duration),
+            ])
+        })
+        .collect();
+
+    let widths = [
+        Constraint::Length(5),
+        Constraint::Min(10),
+        Constraint::Length(10),
+    ];
+
+    let table = Table::new(rows, widths).header(header);
+
+    frame.render_widget(table, area);
+}
+
+fn format_duration(duration: std::time::Duration) -> String {
+    let total_secs = duration.as_secs();
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
 }
 
 fn draw_cinema(frame: &mut Frame, _app: &App) {

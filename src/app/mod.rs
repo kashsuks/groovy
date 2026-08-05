@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crossterm::event::KeyCode;
 
 use crate::config::Config;
+use crate::library::{self, Track};
 use browser::BrowserState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,12 @@ pub enum HomeMode {
     Naming,
 }
 
+pub struct ActivePlaylist {
+    pub name: String,
+    pub path: PathBuf,
+    pub tracks: Vec<Track>,
+}
+
 pub struct App {
     pub screen: Screen,
     pub sidebar_open: bool,
@@ -32,6 +39,7 @@ pub struct App {
     pub browser: Option<BrowserState>,
     pub naming_input: String,
     pub status_message: Option<String>,
+    pub current_playlist: Option<ActivePlaylist>,
 }
 
 impl App {
@@ -47,6 +55,7 @@ impl App {
             browser: None,
             naming_input: String::new(),
             status_message: None,
+            current_playlist: None,
         }
     }
 
@@ -94,7 +103,13 @@ impl App {
                 self.home_selected = self.home_selected.saturating_sub(1);
             }
             KeyCode::Enter => {
-                if self.config.playlists.get(self.home_selected).is_some() {
+                if let Some(entry) = self.config.playlists.get(self.home_selected) {
+                    let tracks = library::scan_playlist(&entry.path);
+                    self.current_playlist = Some(ActivePlaylist {
+                        name: entry.name.clone(),
+                        path: entry.path.clone(),
+                        tracks,
+                    });
                     self.screen = Screen::Playlist;
                 }
             }
