@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{HomeMode, Screen::Playlist, browser::BrowserState};
+use crate::app::{HomeMode, browser::BrowserState};
 use crate::app::{App, Screen};
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -191,7 +191,7 @@ fn draw_playlist(frame: &mut Frame, app: &App) {
     draw_bottom_bar(frame, chunks[1]);
 }
 
-fn draw_track_table(frame: &mut Frame, _playlist: &crate::app::ActivePlaylist, area: Rect) {
+fn draw_track_table(frame: &mut Frame, playlist: &crate::app::ActivePlaylist, area: Rect) {
     let header = Row::new(vec!["#", "Title", "Duration"])
         .style(Style::default().add_modifier(Modifier::BOLD))
         .bottom_margin(1);

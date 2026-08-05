@@ -156,20 +156,18 @@ impl App {
                 self.naming_input.pop();
             }
             KeyCode::Char(c) => self.naming_input.push(c),
-            KeyCode::Enter => {
-                if !self.naming_input.trim().is_empty() {
-                    if let Some(browser) = &self.browser {
-                        let name = self.naming_input.trim().to_string();
-                        let path = browser.current_dir.clone();
-                        match self.config.add_playlist(name, path) {
-                            Ok(()) => self.status_message = None,
-                            Err(e) => self.status_message = Some(format!("save failed: {e}")),
-                        }
+            KeyCode::Enter if !self.naming_input.trim().is_empty() => {
+                if let Some(browser) = &self.browser {
+                    let name = self.naming_input.trim().to_string();
+                    let path = browser.current_dir.clone();
+                    match self.config.add_playlist(name, path) {
+                        Ok(()) => self.status_message = None,
+                        Err(e) => self.status_message = Some(format!("save failed: {e}")),
                     }
-                    self.browser = None;
-                    self.naming_input.clear();
-                    self.home_mode = HomeMode::List;
                 }
+                self.browser = None;
+                self.naming_input.clear();
+                self.home_mode = HomeMode::List;
             }
             _ => {}
         }
