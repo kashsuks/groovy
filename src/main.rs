@@ -1,6 +1,7 @@
 mod app;
 mod config;
 mod library;
+mod player;
 mod tui;
 
 use std::time::Duration;
