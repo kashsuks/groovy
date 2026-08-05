@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{HomeMode, browser::{self, BrowserState}};
+use crate::app::{HomeMode, browser::BrowserState};
 use crate::app::{App, Screen};
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -87,7 +87,7 @@ fn draw_path_popup(frame: &mut Frame, input: &str, area: Rect) {
 fn centered_rect(percent_width: u16, height: u16, area: Rect) -> Rect {
     let width = area.width * percent_width / 100;
     let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.width.saturating_sub(height)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
     Rect { x, y, width, height }
 }
 
@@ -147,7 +147,7 @@ fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(list, area);
 }
 
-fn draw_playlist(frame: &mut Frame, app: &App) {
+fn draw_playlist(frame: &mut Frame, _app: &App) {
     let area = frame.size();
 
     let chunks = Layout::default()
