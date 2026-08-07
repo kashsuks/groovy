@@ -9,15 +9,20 @@ use ratatui::{
 use crate::app::{HomeMode, browser::BrowserState};
 use crate::app::{App, PlaybackState, Screen};
 
-pub fn draw(frame: &mut Frame, app: &App) {
-    let area = frame.size();
-
+/// Splits the terminal into the screen-specific content area and the
+/// persistent bottom bar area. Shared with the mouse click handler in
+/// `main.rs` so hit-testing lines up with what was actually drawn.
+pub fn split_content_and_bar(area: Rect) -> (Rect, Rect) {
     let screen_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(4)])
         .split(area);
-    let content_area = screen_chunks[0];
-    let bottom_bar_area = screen_chunks[1];
+    (screen_chunks[0], screen_chunks[1])
+}
+
+pub fn draw(frame: &mut Frame, app: &App) {
+    let area = frame.size();
+    let (content_area, bottom_bar_area) = split_content_and_bar(area);
 
     match app.screen {
         Screen::Home => draw_home(frame, app, content_area),
@@ -272,68 +277,113 @@ fn draw_cinema(frame: &mut Frame, _app: &App, area: Rect) {
     frame.render_widget(body, area);
 }
 
+const BUTTON_WIDTH: u16 = 7;
+const BUTTON_GAP: u16 = 2;
+const BUTTON_COUNT: u16 = 5;
+
+/// Click/render regions for the five transport icon buttons. Pure geometry —
+/// doesn't depend on app state — so `main.rs` can recompute the exact same
+/// rects at click time without needing to touch rendering code.
+pub struct BottomBarLayout {
+    pub prev: Rect,
+    pub play_pause: Rect,
+    pub next: Rect,
+    pub shuffle: Rect,
+    pub repeat: Rect,
+}
+
+pub fn bottom_bar_layout(area: Rect) -> BottomBarLayout {
+    let total_width = BUTTON_COUNT * BUTTON_WIDTH + (BUTTON_COUNT - 1) * BUTTON_GAP;
+    let start_x = area.x + area.width.saturating_sub(total_width) / 2;
+    let y = area.y + 1; // first content row, just under the top border
+
+    let rect_at = |slot: u16| Rect {
+        x: start_x + slot * (BUTTON_WIDTH + BUTTON_GAP),
+        y,
+        width: BUTTON_WIDTH,
+        height: 1,
+    };
+
+    BottomBarLayout {
+        prev: rect_at(0),
+        play_pause: rect_at(1),
+        next: rect_at(2),
+        shuffle: rect_at(3),
+        repeat: rect_at(4),
+    }
+}
+
 /// Persistent, full-width transport bar mounted at the bottom of every
-/// screen (Home included), not just Playlist/Cinema.
+/// screen (Home included), not just Playlist/Cinema. Icon buttons are both
+/// keyboard-driven (see `App::handle_playback_screen_key`) and mouse-clickable
+/// (see the click handler in `main.rs`, which reuses `bottom_bar_layout`).
 fn draw_bottom_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let block = Block::default().borders(Borders::ALL);
+    frame.render_widget(Block::default().borders(Borders::ALL).title(" Now Playing "), area);
+
+    let layout = bottom_bar_layout(area);
+
+    let inactive = Style::default();
+    let active = Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD);
+    let repeat_one = Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD);
+
+    render_icon_button(frame, layout.prev, "\u{23ee}", inactive);
+    let (play_icon, play_style) = match app.playback_state {
+        PlaybackState::Playing => ("\u{23f8}", active),
+        _ => ("\u{25b6}", inactive),
+    };
+    render_icon_button(frame, layout.play_pause, play_icon, play_style);
+    render_icon_button(frame, layout.next, "\u{23ed}", inactive);
+    render_icon_button(frame, layout.shuffle, "\u{21c4}", if app.shuffle { active } else { inactive });
+
+    let repeat_icon = if app.repeat_mode == crate::app::RepeatMode::One { "\u{21bb}1" } else { "\u{21bb}" };
+    let repeat_style = match app.repeat_mode {
+        crate::app::RepeatMode::Off => inactive,
+        crate::app::RepeatMode::All => active,
+        crate::app::RepeatMode::One => repeat_one,
+    };
+    render_icon_button(frame, layout.repeat, repeat_icon, repeat_style);
 
     let playlist = app.current_playlist.as_ref();
     let track = playlist.and_then(|p| app.now_playing_index.and_then(|i| p.tracks.get(i)));
 
-    let Some(track) = track else {
-        let message = if playlist.is_some() {
-            "nothing playing — select a track and press Enter"
-        } else {
-            "no playlist open"
-        };
-        let bar = Paragraph::new(vec![Line::from(message), Line::from(controls_line(app))])
-            .alignment(Alignment::Center)
-            .block(block);
-        frame.render_widget(bar, area);
-        return;
+    let progress_text = match track {
+        Some(track) => {
+            let elapsed = format_duration(app.position);
+            let total = format_duration(track.duration);
+
+            // Stretch the progress bar to fill the available width instead of
+            // a fixed size, since this panel now spans the whole terminal.
+            let bar_width = (area.width as usize).saturating_sub(24).clamp(10, 80);
+            let progress_ratio = if track.duration.as_secs_f64() > 0.0 {
+                (app.position.as_secs_f64() / track.duration.as_secs_f64()).min(1.0)
+            } else {
+                0.0
+            };
+            let filled = (bar_width as f64 * progress_ratio).round() as usize;
+            let progress_bar = format!(
+                "{}{}",
+                "=".repeat(filled),
+                "-".repeat(bar_width.saturating_sub(filled))
+            );
+            format!("{}   {elapsed} [{progress_bar}] {total}", track.title)
+        }
+        None if playlist.is_some() => "select a track and press Enter".to_string(),
+        None => "no playlist open".to_string(),
     };
 
-    let state_label = match app.playback_state {
-        PlaybackState::Playing => "\u{25b6}",
-        PlaybackState::Paused => "\u{23f8}",
-        PlaybackState::Stopped => "\u{25a0}",
+    let progress_area = Rect {
+        x: area.x + 1,
+        y: area.y + 2,
+        width: area.width.saturating_sub(2),
+        height: 1,
     };
-
-    let elapsed = format_duration(app.position);
-    let total = format_duration(track.duration);
-
-    // Stretch the progress bar to fill the available width instead of a
-    // fixed size, since this panel now spans the whole terminal.
-    let bar_width = (area.width as usize).saturating_sub(24).clamp(10, 80);
-    let progress_ratio = if track.duration.as_secs_f64() > 0.0 {
-        (app.position.as_secs_f64() / track.duration.as_secs_f64()).min(1.0)
-    } else {
-        0.0
-    };
-    let filled = (bar_width as f64 * progress_ratio).round() as usize;
-    let progress_bar = format!(
-        "{}{}",
-        "=".repeat(filled),
-        "-".repeat(bar_width.saturating_sub(filled))
-    );
-
-    let now_playing_line = format!("{state_label}  {}   {elapsed} [{progress_bar}] {total}", track.title);
-
-    let bar = Paragraph::new(vec![
-        Line::from(now_playing_line),
-        Line::from(controls_line(app)),
-    ])
-    .alignment(Alignment::Center)
-    .block(block.title(" Now Playing "));
-    frame.render_widget(bar, area);
+    let progress_line = Paragraph::new(progress_text).alignment(Alignment::Center);
+    frame.render_widget(progress_line, progress_area);
 }
 
-fn controls_line(app: &App) -> String {
-    format!(
-        "[p] Prev   [Space] Play/Pause   [n] Next   [s] Shuffle: {}   [r] Repeat: {}",
-        if app.shuffle { "On" } else { "Off" },
-        app.repeat_mode.label(),
-    )
+fn render_icon_button(frame: &mut Frame, rect: Rect, icon: &str, style: Style) {
+    let button = Paragraph::new(format!("[{icon}]")).alignment(Alignment::Center).style(style);
+    frame.render_widget(button, rect);
 }
 
 /// Sidebar overlay: a floating panel over whatever is active on the screen

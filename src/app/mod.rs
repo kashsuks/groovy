@@ -53,12 +53,28 @@ impl RepeatMode {
             RepeatMode::One => RepeatMode::Off,
         }
     }
+}
 
-    pub fn label(self) -> &'static str {
+/// One of the five icon buttons on the persistent bottom bar. Shared between
+/// keyboard handling and mouse click hit-testing so both paths trigger the
+/// exact same behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlButton {
+    Prev,
+    PlayPause,
+    Next,
+    Shuffle,
+    Repeat,
+}
+
+impl ControlButton {
+    pub fn activate(self, app: &mut App) {
         match self {
-            RepeatMode::Off => "Off",
-            RepeatMode::All => "All",
-            RepeatMode::One => "One",
+            ControlButton::Prev => app.play_previous_track(),
+            ControlButton::PlayPause => app.toggle_pause(),
+            ControlButton::Next => app.advance_to_next_track(),
+            ControlButton::Shuffle => app.toggle_shuffle(),
+            ControlButton::Repeat => app.cycle_repeat(),
         }
     }
 }
