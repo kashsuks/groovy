@@ -6,7 +6,7 @@ mod tui;
 
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
 use app::App;
 
@@ -22,8 +22,20 @@ fn main() -> color_eyre::Result<()> {
 
 fn run(terminal: &mut tui::Tui) -> color_eyre::Result<()> {
     let mut app = App::new();
+    let mut last_screen = app.screen;
 
     while !app.should_quit {
+        app.poll_player();
+
+        // ratatui only redraws cells that changed since the previous frame;
+        // widgets that render fewer rows than their area (e.g. a short track
+        // table) can leave stale glyphs from the previous screen behind.
+        // Forcing a full clear on screen transitions guarantees a clean slate.
+        if app.screen != last_screen {
+            terminal.clear()?;
+            last_screen = app.screen;
+        }
+
         terminal.draw(|frame| tui::ui::draw(frame, &app))?;
 
         if event::poll(Duration::from_millis(100))? {
@@ -32,7 +44,14 @@ fn run(terminal: &mut tui::Tui) -> color_eyre::Result<()> {
                 // a Press and a Release event; only act on Press to avoid
                 // double-handling
                 if key.kind == KeyEventKind::Press {
-                    app.handle_key(key.code);
+                    // Ctrl+C quits from anywhere, including text-entry modes
+                    // (naming a playlist, typing a path) where 'q' is just a
+                    // regular character and can't double as a quit key.
+                    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                        app.should_quit = true;
+                    } else {
+                        app.handle_key(key.code);
+                    }
                 }
             }
         }

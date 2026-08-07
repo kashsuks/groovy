@@ -33,11 +33,12 @@ pub struct PlayerHandle {
 
 impl PlayerHandle {
     pub fn spawn() -> Self {
-        let (command_tx, command_rx) = mpsc::channel(); // setup transmission and recieving
-                                                         let (status_tx, status_rx) = mpsc::channel();
+        let (command_tx, command_rx) = mpsc::channel();
+        let (status_tx, status_rx) = mpsc::channel();
 
-                                                         thread::spawn(move || run_player_thread(command_rx, status_tx));
-                                                         Self { command_tx, status_rx}
+        thread::spawn(move || run_player_thread(command_rx, status_tx));
+
+        Self { command_tx, status_rx }
     }
 
     pub fn send(&self, command: PlayerCommand) {
@@ -65,14 +66,14 @@ fn run_player_thread(command_rx: Receiver<PlayerCommand>, status_tx: Sender<Play
 
     loop {
         match command_rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(PlayerCommand::Play(play)) => {
+            Ok(PlayerCommand::Play(path)) => {
                 match play_file(&stream_handle, &path) {
                     Ok(new_sink) => {
                         sink = Some(new_sink);
                         current_path = Some(path.clone());
-                        started_at = Some(Instant::new());
+                        started_at = Some(Instant::now());
                         paused_position = Duration::ZERO;
-                        let _ = status_tx.send(PlayerStatus::Playing { path, position: Duration::ZERO })
+                        let _ = status_tx.send(PlayerStatus::Playing { path, position: Duration::ZERO });
                     }
                     Err(e) => {
                         let _ = status_tx.send(PlayerStatus::Error(format!("couldn't play {}: {e}", path.display())));
@@ -111,6 +112,13 @@ fn run_player_thread(command_rx: Receiver<PlayerCommand>, status_tx: Sender<Play
                         current_path = None;
                         started_at = None;
                         let _ = status_tx.send(PlayerStatus::Finished);
+                    } else if started_at.is_some() {
+                        // Actually playing (not paused) — the UI needs a
+                        // fresh position every tick to advance the progress bar.
+                        if let Some(path) = &current_path {
+                            let position = elapsed_position(started_at, paused_position);
+                            let _ = status_tx.send(PlayerStatus::Playing { path: path.clone(), position });
+                        }
                     }
                 }
             }

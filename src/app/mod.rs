@@ -1,11 +1,13 @@
 pub mod browser;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crossterm::event::KeyCode;
 
 use crate::config::Config;
 use crate::library::{self, Track};
+use crate::player::{PlayerCommand, PlayerHandle, PlayerStatus};
 use browser::BrowserState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +30,39 @@ pub struct ActivePlaylist {
     pub tracks: Vec<Track>,
 }
 
+/// Transport state for whatevers currently loaded in the player thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlaybackState {
+    Stopped,
+    Playing,
+    Paused,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepeatMode {
+    Off,
+    All,
+    One,
+}
+
+impl RepeatMode {
+    fn cycle(self) -> Self {
+        match self {
+            RepeatMode::Off => RepeatMode::All,
+            RepeatMode::All => RepeatMode::One,
+            RepeatMode::One => RepeatMode::Off,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RepeatMode::Off => "Off",
+            RepeatMode::All => "All",
+            RepeatMode::One => "One",
+        }
+    }
+}
+
 pub struct App {
     pub screen: Screen,
     pub sidebar_open: bool,
@@ -40,6 +75,14 @@ pub struct App {
     pub naming_input: String,
     pub status_message: Option<String>,
     pub current_playlist: Option<ActivePlaylist>,
+
+    pub player: PlayerHandle,
+    pub playback_state: PlaybackState,
+    pub now_playing_index: Option<usize>,
+    pub position: Duration,
+    pub track_selected: usize,
+    pub shuffle: bool,
+    pub repeat_mode: RepeatMode,
 }
 
 impl App {
@@ -56,6 +99,43 @@ impl App {
             naming_input: String::new(),
             status_message: None,
             current_playlist: None,
+            player: PlayerHandle::spawn(),
+            playback_state: PlaybackState::Stopped,
+            now_playing_index: None,
+            position: Duration::ZERO,
+            track_selected: 0,
+            shuffle: false,
+            repeat_mode: RepeatMode::Off,
+        }
+    }
+
+    /// Drains pending status updates from the player thread and folds them
+    pub fn poll_player(&mut self) {
+        for status in self.player.poll() {
+            match status {
+                PlayerStatus::Playing { position, .. } => {
+                    self.playback_state = PlaybackState::Playing;
+                    self.position = position;
+                }
+                PlayerStatus::Paused { position } => {
+                    self.playback_state = PlaybackState::Paused;
+                    self.position = position;
+                }
+                PlayerStatus::Stopped => {
+                    self.playback_state = PlaybackState::Stopped;
+                    self.now_playing_index = None;
+                    self.position = Duration::ZERO;
+                }
+                PlayerStatus::Finished => {
+                    self.playback_state = PlaybackState::Stopped;
+                    self.position = Duration::ZERO;
+                    self.on_track_finished();
+                }
+                PlayerStatus::Error(message) => {
+                    self.status_message = Some(message);
+                    self.playback_state = PlaybackState::Stopped;
+                }
+            }
         }
     }
 
@@ -70,13 +150,130 @@ impl App {
         }
     }
 
-    fn handle_playback_screen_key(&mut self, code: KeyCode) { 
+    fn handle_playback_screen_key(&mut self, code: KeyCode) {
         match code {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('b') => self.sidebar_open = !self.sidebar_open,
-            KeyCode::Enter => self.advance_screen(),
+            KeyCode::Down | KeyCode::Char('j') => self.move_track_selection(1),
+            KeyCode::Up | KeyCode::Char('k') => self.move_track_selection(-1),
+            KeyCode::Char(' ') => self.toggle_pause(),
+            KeyCode::Char('n') => self.advance_to_next_track(),
+            KeyCode::Char('p') => self.play_previous_track(),
+            KeyCode::Char('s') => self.toggle_shuffle(),
+            KeyCode::Char('r') => self.cycle_repeat(),
+            KeyCode::Enter => self.play_selected_track(),
             KeyCode::Esc => self.retreat_screen(),
             _ => {}
+        }
+    }
+
+    fn move_track_selection(&mut self, delta: i32) {
+        let Some(playlist) = &self.current_playlist else { return };
+        if playlist.tracks.is_empty() {
+            return;
+        }
+        let last = playlist.tracks.len() as i32 - 1;
+        let next = (self.track_selected as i32 + delta).clamp(0, last);
+        self.track_selected = next as usize;
+    }
+
+    fn play_selected_track(&mut self) {
+        self.play_track_at(self.track_selected);
+    }
+
+    fn play_track_at(&mut self, index: usize) {
+        let Some(playlist) = &self.current_playlist else { return };
+        let Some(track) = playlist.tracks.get(index) else { return };
+        self.player.send(PlayerCommand::Play(track.path.clone()));
+        self.now_playing_index = Some(index);
+    }
+
+    /// Called when the player thread reports a track finished on its own.
+    /// Repeat-one replays the same track instead of advancing.
+    fn on_track_finished(&mut self) {
+        if self.repeat_mode == RepeatMode::One {
+            if let Some(i) = self.now_playing_index {
+                self.play_track_at(i);
+                return;
+            }
+        }
+        self.advance_to_next_track();
+    }
+
+    fn advance_to_next_track(&mut self) {
+        let Some(playlist) = &self.current_playlist else { return };
+        let len = playlist.tracks.len();
+        if len == 0 {
+            return;
+        }
+
+        let next_index = if self.shuffle {
+            self.random_track_index(len)
+        } else {
+            match self.now_playing_index {
+                Some(i) if i + 1 < len => i + 1,
+                Some(_) if self.repeat_mode == RepeatMode::All => 0,
+                None => 0,
+                _ => {
+                    self.now_playing_index = None;
+                    return;
+                }
+            }
+        };
+        self.play_track_at(next_index);
+    }
+
+    fn play_previous_track(&mut self) {
+        let Some(playlist) = &self.current_playlist else { return };
+        let len = playlist.tracks.len();
+        if len == 0 {
+            return;
+        }
+
+        let prev_index = if self.shuffle {
+            self.random_track_index(len)
+        } else {
+            match self.now_playing_index {
+                Some(0) if self.repeat_mode == RepeatMode::All => len - 1,
+                Some(0) | None => 0,
+                Some(i) => i - 1,
+            }
+        };
+        self.play_track_at(prev_index);
+    }
+
+    /// Cheap pseudo-random pick, good enough for shuffle — not used anywhere
+    /// that needs real randomness quality.
+    fn random_track_index(&self, len: usize) -> usize {
+        if len <= 1 {
+            return 0;
+        }
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() as usize;
+        let mut index = nanos % len;
+        if Some(index) == self.now_playing_index {
+            index = (index + 1) % len;
+        }
+        index
+    }
+
+    fn toggle_shuffle(&mut self) {
+        self.shuffle = !self.shuffle;
+    }
+
+    fn cycle_repeat(&mut self) {
+        self.repeat_mode = self.repeat_mode.cycle();
+    }
+
+    /// Toggles pause/resume. No-op if nothing is currently loaded.
+    fn toggle_pause(&mut self) {
+        match self.playback_state {
+            PlaybackState::Playing => self.player.send(PlayerCommand::Pause),
+            PlaybackState::Paused => self.player.send(PlayerCommand::Resume),
+            PlaybackState::Stopped => {}
         }
     }
     fn handle_home_key(&mut self, code: KeyCode) {
@@ -110,6 +307,7 @@ impl App {
                         path: entry.path.clone(),
                         tracks,
                     });
+                    self.track_selected = 0;
                     self.screen = Screen::Playlist;
                 }
             }

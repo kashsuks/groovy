@@ -7,23 +7,32 @@ use ratatui::{
 };
 
 use crate::app::{HomeMode, browser::BrowserState};
-use crate::app::{App, Screen};
+use crate::app::{App, PlaybackState, Screen};
 
 pub fn draw(frame: &mut Frame, app: &App) {
+    let area = frame.size();
+
+    let screen_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(4)])
+        .split(area);
+    let content_area = screen_chunks[0];
+    let bottom_bar_area = screen_chunks[1];
+
     match app.screen {
-        Screen::Home => draw_home(frame, app),
-        Screen::Playlist => draw_playlist(frame, app),
-        Screen::Cinema => draw_cinema(frame, app),
+        Screen::Home => draw_home(frame, app, content_area),
+        Screen::Playlist => draw_playlist(frame, app, content_area),
+        Screen::Cinema => draw_cinema(frame, app, content_area),
     }
+
+    draw_bottom_bar(frame, app, bottom_bar_area);
 
     if app.sidebar_open {
         draw_sidebar(frame, app);
     }
 }
 
-fn draw_home(frame: &mut Frame, app: &App) {
-    let area = frame.size();
-
+fn draw_home(frame: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -92,6 +101,16 @@ fn centered_rect(percent_width: u16, height: u16, area: Rect) -> Rect {
 }
 
 fn draw_browser(frame: &mut Frame, browser: &BrowserState, area: Rect) {
+    // The list only paints cells for its border and its actual entries; without
+    // an explicit Clear first, whatever the Home screen drew underneath this
+    // frame (logo text, playlist rows) shows through the gaps.
+    frame.render_widget(ratatui::widgets::Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(area);
+
     let items: Vec<ListItem> = browser
         .entries
         .iter()
@@ -113,8 +132,16 @@ fn draw_browser(frame: &mut Frame, browser: &BrowserState, area: Rect) {
 
     let title = format!(" {}", browser.current_dir.display());
     let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
+    frame.render_widget(list, chunks[0]);
 
-    frame.render_widget(list, area);
+    // Browsing here only picks a folder — it doesn't create a playlist by
+    // itself, which is easy to miss without this hint.
+    let hint = Paragraph::new(
+        "[Enter/l] open dir   [h/Backspace] up   [/] type path   [s] save this folder as a playlist   [Esc] cancel",
+    )
+    .alignment(Alignment::Center)
+    .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(hint, chunks[1]);
 }
 
 fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
@@ -147,27 +174,19 @@ fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(list, area);
 }
 
-fn draw_playlist(frame: &mut Frame, app: &App) {
-    let area = frame.size();
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
-        .split(area);
-    
+fn draw_playlist(frame: &mut Frame, app: &App, area: Rect) {
     let Some(playlist) = &app.current_playlist else {
         let empty = Paragraph::new("No playlist open")
             .alignment(Alignment::Center)
             .block(Block::default().borders(Borders::ALL).title(" Playlist "));
-        frame.render_widget(empty, chunks[0]);
-        draw_bottom_bar(frame, chunks[1]);
+        frame.render_widget(empty, area);
         return;
     };
 
     let body_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Length(1), Constraint::Min(1)])
-        .split(chunks[0]);
+        .split(area);
 
     let title = Paragraph::new(Line::from(Span::styled(
         playlist.name.as_str(),
@@ -186,12 +205,10 @@ fn draw_playlist(frame: &mut Frame, app: &App) {
     ));
     frame.render_widget(play_button, body_chunks[1]);
 
-    draw_track_table(frame, playlist, body_chunks[2]);
-
-    draw_bottom_bar(frame, chunks[1]);
+    draw_track_table(frame, app, playlist, body_chunks[2]);
 }
 
-fn draw_track_table(frame: &mut Frame, playlist: &crate::app::ActivePlaylist, area: Rect) {
+fn draw_track_table(frame: &mut Frame, app: &App, playlist: &crate::app::ActivePlaylist, area: Rect) {
     let header = Row::new(vec!["#", "Title", "Duration"])
         .style(Style::default().add_modifier(Modifier::BOLD))
         .bottom_margin(1);
@@ -199,12 +216,27 @@ fn draw_track_table(frame: &mut Frame, playlist: &crate::app::ActivePlaylist, ar
     let rows: Vec<Row> = playlist
         .tracks
         .iter()
-        .map(|track| {
+        .enumerate()
+        .map(|(i, track)| {
+            let is_now_playing = app.now_playing_index == Some(i);
+            let is_selected = app.track_selected == i;
+
+            let mut style = Style::default();
+            if is_selected {
+                style = style.bg(Color::DarkGray).add_modifier(Modifier::BOLD);
+            }
+            if is_now_playing {
+                style = style.fg(Color::Green);
+            }
+
+            let marker = if is_now_playing { ">" } else { " " };
+
             Row::new(vec![
-                track.index.to_string(),
+                format!("{marker}{}", track.index),
                 track.title.clone(),
                 format_duration(track.duration),
             ])
+            .style(style)
         })
         .collect();
 
@@ -232,29 +264,76 @@ fn format_duration(duration: std::time::Duration) -> String {
     }
 }
 
-fn draw_cinema(frame: &mut Frame, _app: &App) {
-    let area = frame.size();
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
-        .split(area);
-
+fn draw_cinema(frame: &mut Frame, _app: &App, area: Rect) {
     let body = Paragraph::new("Cinema mode placeholder")
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::ALL).title(" Cinema "));
 
-    frame.render_widget(body, chunks[0]);
-
-    draw_bottom_bar(frame, chunks[1]);
+    frame.render_widget(body, area);
 }
 
-// Shared playback control bar, mounted on playlist and cinema screens
-fn draw_bottom_bar(frame: &mut Frame, area: Rect) {
-    let bar = Paragraph::new("[ now playing: -- ] (bottom bar placeholder)")
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL));
+/// Persistent, full-width transport bar mounted at the bottom of every
+/// screen (Home included), not just Playlist/Cinema.
+fn draw_bottom_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default().borders(Borders::ALL);
+
+    let playlist = app.current_playlist.as_ref();
+    let track = playlist.and_then(|p| app.now_playing_index.and_then(|i| p.tracks.get(i)));
+
+    let Some(track) = track else {
+        let message = if playlist.is_some() {
+            "nothing playing — select a track and press Enter"
+        } else {
+            "no playlist open"
+        };
+        let bar = Paragraph::new(vec![Line::from(message), Line::from(controls_line(app))])
+            .alignment(Alignment::Center)
+            .block(block);
+        frame.render_widget(bar, area);
+        return;
+    };
+
+    let state_label = match app.playback_state {
+        PlaybackState::Playing => "\u{25b6}",
+        PlaybackState::Paused => "\u{23f8}",
+        PlaybackState::Stopped => "\u{25a0}",
+    };
+
+    let elapsed = format_duration(app.position);
+    let total = format_duration(track.duration);
+
+    // Stretch the progress bar to fill the available width instead of a
+    // fixed size, since this panel now spans the whole terminal.
+    let bar_width = (area.width as usize).saturating_sub(24).clamp(10, 80);
+    let progress_ratio = if track.duration.as_secs_f64() > 0.0 {
+        (app.position.as_secs_f64() / track.duration.as_secs_f64()).min(1.0)
+    } else {
+        0.0
+    };
+    let filled = (bar_width as f64 * progress_ratio).round() as usize;
+    let progress_bar = format!(
+        "{}{}",
+        "=".repeat(filled),
+        "-".repeat(bar_width.saturating_sub(filled))
+    );
+
+    let now_playing_line = format!("{state_label}  {}   {elapsed} [{progress_bar}] {total}", track.title);
+
+    let bar = Paragraph::new(vec![
+        Line::from(now_playing_line),
+        Line::from(controls_line(app)),
+    ])
+    .alignment(Alignment::Center)
+    .block(block.title(" Now Playing "));
     frame.render_widget(bar, area);
+}
+
+fn controls_line(app: &App) -> String {
+    format!(
+        "[p] Prev   [Space] Play/Pause   [n] Next   [s] Shuffle: {}   [r] Repeat: {}",
+        if app.shuffle { "On" } else { "Off" },
+        app.repeat_mode.label(),
+    )
 }
 
 /// Sidebar overlay: a floating panel over whatever is active on the screen
@@ -271,5 +350,6 @@ fn draw_sidebar(frame: &mut Frame, _app: &App) {
     let sidebar = Paragraph::new("Sidebar placeholder")
         .block(Block::default().borders(Borders::ALL).title(" Playlists "));
 
+    frame.render_widget(ratatui::widgets::Clear, sidebar_area);
     frame.render_widget(sidebar, sidebar_area);
 }
