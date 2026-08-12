@@ -17,20 +17,20 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact: groove-linux-x86_64
-            bin: groove
+            artifact: groovy-linux-x86_64
+            bin: groovy
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact: groove-windows-x86_64
-            bin: groove.exe
+            artifact: groovy-windows-x86_64
+            bin: groovy.exe
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact: groove-macos-x86_64
-            bin: groove
+            artifact: groovy-macos-x86_64
+            bin: groovy
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: groove-macos-aarch64
-            bin: groove
+            artifact: groovy-macos-aarch64
+            bin: groovy
 
     runs-on: ${{ matrix.os }}
 
