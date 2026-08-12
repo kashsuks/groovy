@@ -16,11 +16,11 @@ pub struct Config {
 }
 
 impl Config {
-    /// Resolves to per-os config directory in pair with `groove/config.toml`
+    /// Resolves to per-os config directory in pair with `groovy/config.toml`
     fn path() -> color_eyre::Result<PathBuf> {
         let dir = dirs::config_dir()
             .ok_or_else(|| color_eyre::eyre::eyre!("could not determine config directory"))?;
-        Ok(dir.join("groove").join("config.toml"))
+        Ok(dir.join("groovy").join("config.toml"))
     }
 
     /// Loads config from disk, returning any empty default config if no file

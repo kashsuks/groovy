@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Installs groove on Linux: checks for the ALSA runtime lib rodio needs
+# Installs groovy on Linux: checks for the ALSA runtime lib rodio needs
 # and installs it via the system package manager if it's missing, then
-# copies the groove binary onto PATH.
+# copies the groovy binary onto PATH.
 set -euo pipefail
 
-BIN_NAME="groove"
-INSTALL_DIR="${GROOVE_INSTALL_DIR:-$HOME/.local/bin}"
+BIN_NAME="groovy"
+INSTALL_DIR="${GROOVY_INSTALL_DIR:-$HOME/.local/bin}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -48,7 +48,7 @@ if check_alsa; then
 else
     install_alsa
     if ! check_alsa; then
-        echo "libasound2 installation could not be verified; groove may fail to run." >&2
+        echo "libasound2 installation could not be verified; groovy may fail to run." >&2
     fi
 fi
 
@@ -56,7 +56,7 @@ mkdir -p "$INSTALL_DIR"
 cp "$SCRIPT_DIR/$BIN_NAME" "$INSTALL_DIR/$BIN_NAME"
 chmod +x "$INSTALL_DIR/$BIN_NAME"
 
-echo "Installed groove to $INSTALL_DIR/$BIN_NAME"
+echo "Installed groovy to $INSTALL_DIR/$BIN_NAME"
 case ":$PATH:" in
     *":$INSTALL_DIR:"*) ;;
     *) echo "Note: $INSTALL_DIR is not on your PATH. Add it with:" ;
