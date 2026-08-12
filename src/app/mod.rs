@@ -183,6 +183,13 @@ impl App {
         }
     }
 
+    pub fn handle_scroll(&mut self, delta: i32) {
+        match self.screen {
+            Screen::Playlist | Screen::Cinema => self.move_track_selection(delta),
+            Screen::Home => {}
+        }
+    }
+
     fn move_track_selection(&mut self, delta: i32) {
         let Some(playlist) = &self.current_playlist else { return };
         if playlist.tracks.is_empty() {

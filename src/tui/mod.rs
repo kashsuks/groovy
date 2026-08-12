@@ -1,3 +1,4 @@
+pub mod theme;
 pub mod ui;
 
 use std::io::{self, Stdout};

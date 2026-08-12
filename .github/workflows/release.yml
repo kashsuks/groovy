@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: groove-linux-x86_64
+            bin: groove
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: groove-windows-x86_64
+            bin: groove.exe
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: groove-macos-x86_64
+            bin: groove
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: groove-macos-aarch64
+            bin: groove
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/${{ matrix.bin }}
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            cp scripts/install-linux.sh dist/install.sh
+          fi
+          cd dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a ../${{ matrix.artifact }}.zip *
+          else
+            tar czf ../${{ matrix.artifact }}.tar.gz *
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: false
+          generate_release_notes: true

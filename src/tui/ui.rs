@@ -1,17 +1,27 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table, TableState},
     Frame,
 };
 
 use crate::app::{HomeMode, browser::BrowserState};
 use crate::app::{App, PlaybackState, Screen};
+use crate::tui::theme;
 
 /// Splits the terminal into the screen-specific content area and the
 /// persistent bottom bar area. Shared with the mouse click handler in
 /// `main.rs` so hit-testing lines up with what was actually drawn.
+/// Bordered block styled with the Catppuccin Macchiato palette, used for
+/// every titled panel so borders/titles stay consistent across screens.
+fn themed_block(title: &str) -> Block<'_> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::SURFACE2))
+        .title(Span::styled(title, Style::default().fg(theme::LAVENDER)))
+}
+
 pub fn split_content_and_bar(area: Rect) -> (Rect, Rect) {
     let screen_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -47,11 +57,14 @@ fn draw_home(frame: &mut Frame, app: &App, area: Rect) {
         Line::from(Span::styled(
             "Groovy",
             Style::default()
-                .fg(Color::Magenta)
+                .fg(theme::MAUVE)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from("your playlists, from disk"),
+        Line::from(Span::styled(
+            "your playlists, from disk",
+            Style::default().fg(theme::SUBTEXT0),
+        )),
     ])
     .alignment(Alignment::Center)
     .block(Block::default());
@@ -82,7 +95,8 @@ fn draw_naming_prompt(frame: &mut Frame, input: &str, area: Rect) {
     let popup_area = centered_rect(60, 3, area);
 
     let popup = Paragraph::new(format!("{input}_"))
-        .block(Block::default().borders(Borders::ALL).title(" Playlist name "));
+        .style(Style::default().fg(theme::TEXT).bg(theme::MANTLE))
+        .block(themed_block(" Playlist name "));
 
     frame.render_widget(ratatui::widgets::Clear, popup_area);
     frame.render_widget(popup, popup_area);
@@ -92,7 +106,8 @@ fn draw_path_popup(frame: &mut Frame, input: &str, area: Rect) {
     let popup_area = centered_rect(60, 3, area);
 
     let popup = Paragraph::new(format!("{input}_"))
-        .block(Block::default().borders(Borders::ALL).title(" Go to path "));
+        .style(Style::default().fg(theme::TEXT).bg(theme::MANTLE))
+        .block(themed_block(" Go to path "));
 
     frame.render_widget(ratatui::widgets::Clear, popup_area);
     frame.render_widget(popup, popup_area);
@@ -122,12 +137,12 @@ fn draw_browser(frame: &mut Frame, browser: &BrowserState, area: Rect) {
         .enumerate()
         .map(|(i, entry)| {
             let base_style = if entry.is_dir {
-                Style::default().fg(Color::Cyan)
+                Style::default().fg(theme::SAPPHIRE)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme::SUBTEXT0)
             };
             let style = if i == browser.selected {
-                base_style.bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+                base_style.bg(theme::SURFACE1).add_modifier(Modifier::BOLD)
             } else {
                 base_style
             };
@@ -136,7 +151,7 @@ fn draw_browser(frame: &mut Frame, browser: &BrowserState, area: Rect) {
         .collect();
 
     let title = format!(" {}", browser.current_dir.display());
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
+    let list = List::new(items).block(themed_block(&title));
     frame.render_widget(list, chunks[0]);
 
     // Browsing here only picks a folder — it doesn't create a playlist by
@@ -145,15 +160,16 @@ fn draw_browser(frame: &mut Frame, browser: &BrowserState, area: Rect) {
         "[Enter/l] open dir   [h/Backspace] up   [/] type path   [s] save this folder as a playlist   [Esc] cancel",
     )
     .alignment(Alignment::Center)
-    .style(Style::default().fg(Color::DarkGray));
+    .style(Style::default().fg(theme::OVERLAY1));
     frame.render_widget(hint, chunks[1]);
 }
 
 fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
     if app.config.playlists.is_empty() {
         let placeholder = Paragraph::new("No playlists yet - press 'n' to create one")
+            .style(Style::default().fg(theme::SUBTEXT0))
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).title(" Playlists "));
+            .block(themed_block(" Playlists "));
         frame.render_widget(placeholder, area);
         return;
     }
@@ -165,16 +181,15 @@ fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .map(|(i, entry)| {
             let style = if i == app.home_selected {
-                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+                Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
+                Style::default().fg(theme::TEXT)
             };
             ListItem::new(format!("{} ({})", entry.name, entry.path.display())).style(style)
         })
         .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Playlists "));
+    let list = List::new(items).block(themed_block(" Playlists "));
 
     frame.render_widget(list, area);
 }
@@ -182,8 +197,9 @@ fn draw_playlist_list(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_playlist(frame: &mut Frame, app: &App, area: Rect) {
     let Some(playlist) = &app.current_playlist else {
         let empty = Paragraph::new("No playlist open")
+            .style(Style::default().fg(theme::SUBTEXT0))
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).title(" Playlist "));
+            .block(themed_block(" Playlist "));
         frame.render_widget(empty, area);
         return;
     };
@@ -195,17 +211,17 @@ fn draw_playlist(frame: &mut Frame, app: &App, area: Rect) {
 
     let title = Paragraph::new(Line::from(Span::styled(
         playlist.name.as_str(),
-        Style::default().add_modifier(Modifier::BOLD),
+        Style::default().fg(theme::LAVENDER).add_modifier(Modifier::BOLD),
     )))
     .alignment(Alignment::Left)
-    .block(Block::default().borders(Borders::BOTTOM));
+    .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(theme::SURFACE2)));
     frame.render_widget(title, body_chunks[0]);
 
     let play_button = Paragraph::new(Span::styled(
         " Play ",
         Style::default()
-            .fg(Color::Black)
-            .bg(Color::Green)
+            .fg(theme::CRUST)
+            .bg(theme::GREEN)
             .add_modifier(Modifier::BOLD),
     ));
     frame.render_widget(play_button, body_chunks[1]);
@@ -215,7 +231,7 @@ fn draw_playlist(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_track_table(frame: &mut Frame, app: &App, playlist: &crate::app::ActivePlaylist, area: Rect) {
     let header = Row::new(vec!["#", "Title", "Duration"])
-        .style(Style::default().add_modifier(Modifier::BOLD))
+        .style(Style::default().fg(theme::SUBTEXT1).add_modifier(Modifier::BOLD))
         .bottom_margin(1);
 
     let rows: Vec<Row> = playlist
@@ -226,12 +242,12 @@ fn draw_track_table(frame: &mut Frame, app: &App, playlist: &crate::app::ActiveP
             let is_now_playing = app.now_playing_index == Some(i);
             let is_selected = app.track_selected == i;
 
-            let mut style = Style::default();
+            let mut style = Style::default().fg(theme::TEXT);
             if is_selected {
-                style = style.bg(Color::DarkGray).add_modifier(Modifier::BOLD);
+                style = style.bg(theme::SURFACE1).add_modifier(Modifier::BOLD);
             }
             if is_now_playing {
-                style = style.fg(Color::Green);
+                style = style.fg(theme::GREEN);
             }
 
             let marker = if is_now_playing { ">" } else { " " };
@@ -253,7 +269,8 @@ fn draw_track_table(frame: &mut Frame, app: &App, playlist: &crate::app::ActiveP
 
     let table = Table::new(rows, widths).header(header);
 
-    frame.render_widget(table, area);
+    let mut state = TableState::default().with_selected(Some(app.track_selected));
+    frame.render_stateful_widget(table, area, &mut state);
 }
 
 fn format_duration(duration: std::time::Duration) -> String {
@@ -271,8 +288,9 @@ fn format_duration(duration: std::time::Duration) -> String {
 
 fn draw_cinema(frame: &mut Frame, _app: &App, area: Rect) {
     let body = Paragraph::new("Cinema mode placeholder")
+        .style(Style::default().fg(theme::SUBTEXT0))
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).title(" Cinema "));
+        .block(themed_block(" Cinema "));
 
     frame.render_widget(body, area);
 }
@@ -318,13 +336,13 @@ pub fn bottom_bar_layout(area: Rect) -> BottomBarLayout {
 /// keyboard-driven (see `App::handle_playback_screen_key`) and mouse-clickable
 /// (see the click handler in `main.rs`, which reuses `bottom_bar_layout`).
 fn draw_bottom_bar(frame: &mut Frame, app: &App, area: Rect) {
-    frame.render_widget(Block::default().borders(Borders::ALL).title(" Now Playing "), area);
+    frame.render_widget(themed_block(" Now Playing "), area);
 
     let layout = bottom_bar_layout(area);
 
-    let inactive = Style::default();
-    let active = Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD);
-    let repeat_one = Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let inactive = Style::default().fg(theme::SUBTEXT0);
+    let active = Style::default().fg(theme::CRUST).bg(theme::GREEN).add_modifier(Modifier::BOLD);
+    let repeat_one = Style::default().fg(theme::CRUST).bg(theme::YELLOW).add_modifier(Modifier::BOLD);
 
     render_icon_button(frame, layout.prev, "\u{23ee}", inactive);
     let (play_icon, play_style) = match app.playback_state {
@@ -377,7 +395,9 @@ fn draw_bottom_bar(frame: &mut Frame, app: &App, area: Rect) {
         width: area.width.saturating_sub(2),
         height: 1,
     };
-    let progress_line = Paragraph::new(progress_text).alignment(Alignment::Center);
+    let progress_line = Paragraph::new(progress_text)
+        .style(Style::default().fg(theme::TEXT))
+        .alignment(Alignment::Center);
     frame.render_widget(progress_line, progress_area);
 }
 
@@ -398,7 +418,8 @@ fn draw_sidebar(frame: &mut Frame, _app: &App) {
     };
 
     let sidebar = Paragraph::new("Sidebar placeholder")
-        .block(Block::default().borders(Borders::ALL).title(" Playlists "));
+        .style(Style::default().fg(theme::SUBTEXT0).bg(theme::MANTLE))
+        .block(themed_block(" Playlists "));
 
     frame.render_widget(ratatui::widgets::Clear, sidebar_area);
     frame.render_widget(sidebar, sidebar_area);

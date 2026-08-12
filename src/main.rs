@@ -55,11 +55,14 @@ fn run(terminal: &mut tui::Tui) -> color_eyre::Result<()> {
                         }
                     }
                 }
-                Event::Mouse(mouse) => {
-                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
                         handle_bottom_bar_click(&mut app, terminal.size()?, mouse.column, mouse.row);
                     }
-                }
+                    MouseEventKind::ScrollDown => app.handle_scroll(1),
+                    MouseEventKind::ScrollUp => app.handle_scroll(-1),
+                    _ => {}
+                },
                 _ => {}
             }
         }
