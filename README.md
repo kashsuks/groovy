@@ -29,5 +29,10 @@ Once done installing the project and running it, you can create a new playlist b
 You're good to go :)
 
 Theres options like shuffle, replay, play/pause, skip forward/backward, and a cinema mode planned for the future!
+
+# AI Usage
+
+Claude Code agents were used for the creation of audio channels in this project. They were also used for debugging issues related to CD files
+
 </content>
 </invoke>
